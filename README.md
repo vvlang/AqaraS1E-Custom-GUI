@@ -1,5 +1,9 @@
 # Aqara S1E 智能妙控开关 - 60 FPS 自研原生 GUI 固件与 Home Assistant 增强系统
 
+> **Fork 声明**：本仓库是 [oopuuu/AqaraS1E-Custom-GUI](https://github.com/oopuuu/AqaraS1E-Custom-GUI) 的独立维护分支，由 `vvlang` 维护。所有功能、硬件兼容性与升级路径均向上游兼容；如未另行说明，截图、功能描述与版本号同步自上游 v2.7.1。
+>
+> **安装源优先级**：本 fork 的 `install.sh` 默认从本仓库（`vvlang/...`）拉取最新 tarball，并以原始仓库（`oopuuu/...`）作为镜像回退。如果你在使用本 fork 时遇到问题，请先确认你的 release 是否已经推送到本仓库的 `release/` 目录。
+
 本项目是专为 **Aqara 妙控开关 S1E (SSD202D 芯片架构)** 打造的**纯原生 C 语言高性能 GUI 渲染引擎**与 **Home Assistant 双向深度联动系统**。
 
 彻底摆脱官方封闭界面的限制，提供媲美原生手机级动画体验的 60 FPS 满帧流体界面、**全功能屏幕首页 UI 所见即所得编辑画布**、Web 可视化管理后台、双向锁屏 DIY 传感器与 Emoji 自定义、全量硬件传感器与电量计量自动暴露、丰富自定义弹窗通知、PIN 安全锁以及原生 Linux 终端。
@@ -63,7 +67,7 @@
 - 🪟 **小尺寸磁贴状态与智能大卡片展开交互 (Smart Modal Expansion v2.6.0)**：紧凑小尺寸窗帘（1x1）动态精准显示实时开合百分比并在底部绘制 4px 微光胶囊指示条，空调/风扇状态精准呈现；小尺寸非纯开关设备轻触图标徽章快速开关，点击卡片主体智能展开与列表页同款的高清磨砂玻璃大卡片窗口（Detail Modal），提供无级拉杆与全量控制。
 - 🌀 **空调与风扇无级风速控制 (Stepless Wind Speed & Fan Control v2.6.0)**：空调支持无级风速滑块与多档快速切换；物理继电器支持拆分为独立单实体磁贴单独放置与控制。
 - 🖼️ **锁屏系统优化与原厂壁纸 (Lockscreen Customization v2.6.0)**：锁屏设置支持隐藏 3 路物理开关 UI，呈现纯净动效画面；支持原厂锁屏壁纸与自适应防眩光对比色。
-- 🌌 **动态锁屏画廊与智能自适应对比色 (Dynamic Lockscreen & Auto-Contrast Engine)**：原生支持 5 种锁屏动效（经典深邃、极光流光、璀璨星空、量子脉冲、动效流媒体）；支持 30FPS 省电 / 60FPS 极速切换；首创「✨ 智能自动色（Auto Mode）」，基于文本实时屏幕坐标进行微秒级感知亮度采样，随背景明暗动态自适应高对比色彩与 1px 防眩光微阴影，杜绝动态背景吃字；支持 0%~100% 磨砂遮罩自由调节，待机 CPU 空闲率高达 66.6%。
+- 🌌 **动态锁屏画廊与智能自适应对比色 (Dynamic Lockscreen & Auto-Contrast Engine)**：原生支持 5 种锁屏动效（经典深邃、极光流光、璀璨星空、量子脉冲、动效流媒体）；其中「经典深邃 / 极光流光 / 璀璨星空 / 量子脉冲」4 种为内置资源（无需用户上传），「动效流媒体」模式接受用户上传的 `.anim` 自研格式文件（本仓库 `release/anims/` 目录下提供 3 个示例：`cyber_radar_480.anim` / `matrix_rain_480.anim` / `neon_rings_480.anim`，可作转换模板与演示素材）。支持 30FPS 省电 / 60FPS 极速切换；首创「✨ 智能自动色（Auto Mode）」，基于文本实时屏幕坐标进行微秒级感知亮度采样，随背景明暗动态自适应高对比色彩与 1px 防眩光微阴影，杜绝动态背景吃字；支持 0%~100% 磨砂遮罩自由调节，待机 CPU 空闲率与动效复杂度相关，简单静态锁屏下系统空闲率约 60~70%（基于 v2.7.1 实测大致区间，具体数值与所选动效、屏幕刷新率、是否启用自动色相关）。
 - 🔤 **全量 7,445 汉字 GB2312 中文字库引擎 (Full Standard Chinese Typography)**：全量覆盖 GB2312 全部 87 区 × 94 位的 7,445 个汉字及符号（包括“固件”的“件”、“服务”的“服”、“清楚”的“楚”等全部常用字符），二分查找高效检索，中文字符 100% 满血渲染。
 - 📱 **设置网格独立解耦与原生终端诊断 (Decoupled Settings & Shell Terminal)**：主设置菜单采用清晰统一的 2 列 5 行独立网格，彻底分离【🚀 系统更新 (OTA)】与【💻 终端诊断 (Shell)】，告别入口冲突与触控误触发；支持快捷指令栏与全功能虚拟键盘。
 - 🍏 **Apple HomeKit 局域网永续在线与本地 IPC 中枢 (HomeKit ADK & Local IPC Broker)**：深度保留 S1E 官方本地事件中枢（），维持  本地 SEQPACKET 消息队列；**100% 完整保留 Apple HomeKit 局域网 ADK 服务群（、、）**，iOS 家庭 App 永久在线、6个无线按键与3路开关双向极速响应；本地 Home Assistant 毫秒级控制不受任何影响。
@@ -313,7 +317,9 @@ curl "http://<S1E_IP>:8080/cgi-bin/api.cgi?action=push_notify&title=洗衣完成
 
 ## 🤖 第五部分：Home Assistant 实体与传感器自动注册列表
 
-当在 Web 控制台填入 HA 地址与令牌后，S1E 的 `ha_daemon` 守护进程会自动向 Home Assistant 注册以下全量实体与传感器：
+当在 Web 控制台填入 HA 地址与令牌后，S1E 的 `ha_daemon` 守护进程会自动向 Home Assistant 注册以下全量实体与传感器（实体 ID 中的 `<mac>` 会被替换为设备实际 MAC 地址后缀）：
+
+> ⚠️ **声明范围**：下表是「设计目标清单」。实际注册数量与具体 entity_id 命名由 `ha_daemon` ELF 在运行时决定；如下表与设备在 HA 中的实际显示不一致，以设备 Web 后台 + Home Assistant 开发者工具 → 状态为准。如发现差异，请优先升级到最新固件，或在 issue 中附上 `ha_daemon` 的运行日志。
 
 ### 1. 硬件控制与状态实体
 
@@ -382,8 +388,8 @@ http://<S1E_IP_ADDRESS>:8080/
 工具位于本仓库 `tools/convert_gif_to_anim.py`，依赖 Python 3 及 Pillow 库：
 
 ```bash
-# 安装基础 Python 图像库
-pip install pillow
+# 安装基础 Python 图像库（推荐 Pillow >= 9.1，本工具使用 Image.Resampling.LANCZOS）
+pip install 'pillow>=9.1'
 
 # (可选) 若需要转换 MP4、MOV、MKV 等视频文件，需安装 ffmpeg:
 # macOS:
@@ -416,20 +422,21 @@ python3 tools/convert_gif_to_anim.py --help
 | `output` | `*.anim` | 输出文件路径（可选，默认同名加 `.anim` 后缀） |
 | `--fps` | `60` | 目标播放帧率，推荐设置为 `30` (省电) 或 `60` (极速流畅) |
 | `--max-frames` | `180` | 最大转换帧数上限，避免动效文件过大占用过多闪存存储 |
-| `--start` | `0.0` | 视频起始时间截取点（秒，仅对视频有效） |
-| `--duration` | `全部` | 截取视频时长（秒，仅对视频有效） |
+| `--start` | *未指定* | 视频起始时间截取点（秒，仅对视频有效）。未指定时从开头开始。 |
+| `--duration` | *未指定* | 截取视频时长（秒，仅对视频有效）。未指定时取完整视频。 |
 
 ### 3. 上传至 S1E 开关运行
 
 1. **Web 控制台直传（最简单便捷）**：
-   - 电脑或手机浏览器打开 `https://<S1E_IP>:8080`（或端口 34256 视反向代理而定）；
+   - 电脑或手机浏览器打开 `http://<S1E_IP>:8080`（或端口 34256 视反向代理而定）；
    - 在「🔒 待机锁屏与微光时钟」卡片中选择「🎞️ 动效流媒体」样式；
    - 点击「上传 .anim 文件」按钮选中转换生成的 `.anim` 文件，系统将自动校验大小并上传；
    - 上传完成后，直接在屏幕上即可看到满血流畅播放！
 2. **命令行 API 上传**：
    ```bash
-   curl -k -T my_video.anim "https://<S1E_IP>:8080/cgi-bin/api.cgi?action=upload_anim"
+   curl -T my_video.anim "http://<S1E_IP>:8080/cgi-bin/api.cgi?action=upload_anim"
    ```
+   > 注：S1E 自带的 BusyBox httpd 不启用 SSL，因此必须使用 `http://`（非 `https://`）。如果设备位于不可信网络，请在前面挂反向代理（nginx / caddy）并启用 HTTPS。
 
 ---
 
@@ -476,6 +483,7 @@ python3 tools/convert_gif_to_anim.py --help
 
 ## 🙏 致谢与参考 (Credits & Acknowledgments)
 
+- 本仓库为 **[@oopuuu](https://github.com/oopuuu/AqaraS1E-Custom-GUI)** 上游项目的 fork，**所有功能、特性和代码贡献均源自上游**。本 fork 主要承担安装脚本与文档的本地化维护，不重新实现上游核心 GUI / HA 守护引擎。
 - 硬件拆解、串口定义与开启 Telnet 基础固件修改方案来自 **[@niceboygithub](https://github.com/niceboygithub)** 的开源项目：[AqaraSmartSwitchS1E](https://github.com/niceboygithub/AqaraSmartSwitchS1E)，特此致谢！
 
 ---
