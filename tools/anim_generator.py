@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-S1E 480x480 Ultra-Fast Streaming Animation (.anim) Generator & Converter
+S1E 480x480 Ultra-Fast Streaming Animation (.anim) Generator & Converter.
+
 Container Format:
   [Header: 14 Bytes]
     'A''N''I''M' (4B)
@@ -11,9 +12,19 @@ Container Format:
   Followed by each frame:
     ChunkLength  (4B, uint32_le)
     QOI Frame Data (ChunkLength Bytes)
+
+This module is intentionally library-only. Callers should use
+convert_gif_to_anim.py for end-user conversion, or import encode_qoi /
+write_anim directly for programmatic generation.
 """
 
-import struct, math, os, sys
+import os
+import struct
+
+# Run-length slots per QOI op_run tag: 0xc0..0xfd encodes run lengths 1..62.
+_QOI_RUN_MAX = 62
+# Emit a progress log every N frames so stdout stays readable for long sequences.
+_PROGRESS_EVERY = 15
 
 def encode_qoi(width, height, pixels):
     """Encodes 480x480 RGBA bytearray into standard QOI binary stream"""
@@ -31,7 +42,7 @@ def encode_qoi(width, height, pixels):
         
         if px == px_prev:
             run += 1
-            if run == 62 or i == total_px - 1:
+            if run == _QOI_RUN_MAX or i == total_px - 1:
                 out.append(0xc0 | (run - 1))
                 run = 0
         else:
@@ -89,11 +100,8 @@ def write_anim(out_path, width, height, fps, frames):
             chunk_len = len(qoi)
             f.write(struct.pack("<I", chunk_len))
             f.write(qoi)
-            if (idx + 1) % 15 == 0 or idx == total_frames - 1:
+            if (idx + 1) % _PROGRESS_EVERY == 0 or idx == total_frames - 1:
                 print(f"  Frame {idx+1}/{total_frames} encoded (QOI chunk: {chunk_len}B)")
-                
+
     sz = os.path.getsize(out_path)
     print(f"Done! {out_path}: {sz} bytes ({sz/1024:.1f} KB, {sz/1024/1024:.2f} MB)")
-
-if __name__ == "__main__":
-    print("S1E Animation Tool Ready.")
