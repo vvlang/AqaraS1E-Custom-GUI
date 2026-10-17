@@ -109,6 +109,12 @@ jobs:
             && echo "[+] 与仓库中的一致" \
             || { echo "[!] 与仓库中的不一致，先同步 release/ 再打 tag"; exit 1; }
 
+      - name: 取回编译产物
+        uses: actions/download-artifact@v4
+        with:
+          name: s1e-tools-armhf
+          path: tools
+
       - name: 打 OTA 源补丁
         run: |
           python3 dev/tools/patch_ota_source.py \
@@ -123,13 +129,24 @@ jobs:
           path: s1e_custom_gui_vvlang.tar.gz
           if-no-files-found: error
 
+      # 用 runner 自带的 gh CLI 发布，不引入第三方 action
       - name: 发布到 Release
-        if: success()
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            s1e_custom_gui_vvlang.tar.gz
-            dev/build/dynamic/hello_fb
-            dev/build/dynamic/snap_fast
-            dev/build/dynamic/http_body_strip
-            dev/build/dynamic/safe_png_recv
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }} — 自研工具 + OTA 源补丁" \
+            --notes "由 .github/workflows/build.yml 自动构建。
+
+          \`s1e_custom_gui_vvlang.tar.gz\` 的 OTA 下载地址已从上游
+          \`oopuuu/AqaraS1E-Custom-GUI\` 改为本仓库 \`${{ github.repository }}\`
+          （等长原位替换，18 字节）。
+
+          devices/ 下的四个二进制是本仓库自研实现，已在 S1E 真机验证。" \
+            s1e_custom_gui_vvlang.tar.gz \
+            tools/hello_fb \
+            tools/snap_fast \
+            tools/http_body_strip \
+            tools/safe_png_recv \
+          || { echo "[!] gh release create 失败"; exit 1; }
+          echo "[+] 已发布 ${{ github.ref_name }}"
