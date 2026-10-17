@@ -1,1 +1,8 @@
 .DS_Store
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 交叉编译产物（由 make 生成，不入库；CI 会重新编译并作为 artifact 上传）
+dev/build/

@@ -1,0 +1,135 @@
+name: build
+
+# 交叉编译自研工具 + 运行测试 + 产出 OTA 补丁包
+#
+# 触发时机：
+#   push / PR   → 编译 + 测试，产出 artifact
+#   tag (v*)    → 额外产出打过 OTA 源补丁的 release tarball
+#
+# 说明：设备的 OTA 下载地址硬编码在作者的 api.cgi 二进制里，
+# 本 workflow 用 dev/tools/patch_ota_source.py 做等长原位替换
+# （oopuuu → vvlang），把更新源指向本 fork。
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 交叉编译与测试
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 ARM 交叉工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
+          arm-linux-gnueabihf-gcc --version | head -1
+
+      # Makefile 会自动探测编译器：优先 Homebrew 路径，其次 PATH 上的
+      # arm-linux-gnueabihf-gcc。CI 上走后者。
+
+      - name: 编译
+        working-directory: dev
+        run: make
+
+      - name: 验证产物架构
+        working-directory: dev
+        run: |
+          fail=0
+          for f in build/dynamic/*; do
+            echo "── $f"
+            file "$f" | sed 's/^/   /'
+            # 必须是 ARM EABI5
+            file "$f" | grep -q "ARM, EABI5" || { echo "   ✗ 架构不符"; fail=1; }
+            # 解释器必须与作者二进制一致
+            file "$f" | grep -q "/lib/ld-linux-armhf.so.3" || { echo "   ✗ 解释器不符"; fail=1; }
+            # 体积上限：设备内存紧张，不该有大文件
+            sz=$(stat -c%s "$f")
+            [ "$sz" -lt 65536 ] || { echo "   ✗ 体积 $sz 超过 64KB"; fail=1; }
+          done
+          exit $fail
+
+      - name: 单元测试
+        working-directory: dev
+        run: |
+          sh scripts/run_tests.sh
+          python3 scripts/test_png_recv.py
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: s1e-tools-armhf
+          path: dev/build/dynamic/
+          if-no-files-found: error
+
+  ota-patch:
+    name: 生成 OTA 补丁包
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 release 资产齐全
+        # 设备 OTA 会去 fork 的 release/ 拉以下文件，缺一个就会更新失败
+        run: |
+          set -e
+          BASE="https://raw.githubusercontent.com/${{ github.repository }}/main"
+          for p in \
+            /version.json \
+            /release/s1e_custom_gui_latest.tar.gz \
+            /release/anims/cyber_radar_480.anim \
+            /release/anims/matrix_rain_480.anim \
+            /release/anims/neon_rings_480.anim ; do
+            code=$(curl -sI -L --max-time 30 "$BASE$p" -o /dev/null -w '%{http_code}')
+            echo "  $code  $p"
+            [ "$code" = "200" ] || { echo "[!] 资产缺失：$p"; exit 1; }
+          done
+
+      - name: 校验上游 tarball 与仓库中的一致
+        run: |
+          set -e
+          sha256sum release/s1e_custom_gui_latest.tar.gz
+          curl -sL --max-time 120 \
+            "https://raw.githubusercontent.com/${{ github.repository }}/main/release/s1e_custom_gui_latest.tar.gz" \
+            -o /tmp/remote.tar.gz
+          echo "远端:"; sha256sum /tmp/remote.tar.gz
+          cmp release/s1e_custom_gui_latest.tar.gz /tmp/remote.tar.gz \
+            && echo "[+] 与仓库中的一致" \
+            || { echo "[!] 与仓库中的不一致，先同步 release/ 再打 tag"; exit 1; }
+
+      - name: 打 OTA 源补丁
+        run: |
+          python3 dev/tools/patch_ota_source.py \
+            --src release/s1e_custom_gui_latest.tar.gz \
+            --out s1e_custom_gui_vvlang.tar.gz \
+            --owner "${{ github.repository_owner }}"
+
+      - name: 上传补丁包
+        uses: actions/upload-artifact@v4
+        with:
+          name: s1e-ota-patched
+          path: s1e_custom_gui_vvlang.tar.gz
+          if-no-files-found: error
+
+      - name: 发布到 Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            s1e_custom_gui_vvlang.tar.gz
+            dev/build/dynamic/hello_fb
+            dev/build/dynamic/snap_fast
+            dev/build/dynamic/http_body_strip
+            dev/build/dynamic/safe_png_recv
