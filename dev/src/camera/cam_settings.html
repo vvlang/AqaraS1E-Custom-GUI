@@ -197,7 +197,12 @@ a { color: var(--accent); }
     </div>
   </div>
 
-  <button id="btnSave" style="width:100%;">保存配置</button>
+  <button id="btnSave" style="width:100%; margin-bottom:10px;">保存并重启 cam_view</button>
+  <button class="ghost" id="btnRestart" style="width:100%;">仅重启 cam_view（配置未改时用）</button>
+
+  <p class="hint" style="margin-top:10px;">
+    cam_view 启动时读取一次配置，之后不再重读，所以每次改完配置都必须重启它。
+  </p>
 
   <footer>
     自研工具 · 与作者的 Web 控制台互不干扰 ·
@@ -302,6 +307,29 @@ $('btnPreview').addEventListener('click', async () => {
 
 $('btnReload').addEventListener('click', loadConfig);
 
+async function restartCam(note) {
+  status((note ? note + '，' : '') + '正在重启 cam_view…', 'load');
+  try {
+    const r = await fetch(CGI + '?action=restart', { cache: 'no-store' });
+    const j = await r.json();
+    if (j.status === 'ok') {
+      // 用后端返回的实际值回填，避免页面显示的和设备上的不一致
+      $('res').value = j.width + 'x' + j.height;
+      $('fps').value = j.fps;  $('fpsv').textContent = j.fps;
+      $('total_pages').value = j.total_pages;
+      buildPages(j.total_pages, j.camera_page);
+      status('已保存并重启，正在第 ' + (j.camera_page + 1) + ' 屏显示「'
+             + j.entity + '」', 'ok');
+    } else {
+      status('重启失败：' + (j.message || '未知错误'), 'err');
+    }
+  } catch (e) {
+    status('重启失败：' + e.message, 'err');
+  }
+}
+
+$('btnRestart').addEventListener('click', () => restartCam(''));
+
 $('btnSave').addEventListener('click', async () => {
   if (!loaded) { status('请先等待配置加载完成', 'err'); return; }
 
@@ -327,7 +355,7 @@ $('btnSave').addEventListener('click', async () => {
     });
     const j = await r.json();
     if (j.status === 'ok') {
-      status('已保存。重启 cam_view 后生效：killall cam_view && /data/scripts/dev/cam_view &', 'ok');
+      await restartCam('配置已保存');
     } else {
       status('保存失败：' + (j.message || '未知错误'), 'err');
     }

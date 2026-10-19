@@ -129,7 +129,7 @@ int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path)
     return 0;
 }
 
-int s1e_camcfg_write_default(const char *path, const char *entity)
+int s1e_camcfg_write(const s1e_cam_cfg *cfg, const char *path)
 {
     FILE *f = fopen(path ? path : S1E_CAMCFG_PATH, "w");
     if (!f) return -1;
@@ -137,15 +137,25 @@ int s1e_camcfg_write_default(const char *path, const char *entity)
         "{\n"
         "  \"_说明\": \"改完这个文件后重启 cam_view 生效\",\n"
         "  \"entity\": \"%s\",\n"
-        "  \"width\": 640,\n"
-        "  \"height\": 480,\n"
-        "  \"fps\": 3,\n"
-        "  \"camera_page\": 2,\n"
-        "  \"total_pages\": 3\n"
+        "  \"width\": %d,\n"
+        "  \"height\": %d,\n"
+        "  \"fps\": %d,\n"
+        "  \"camera_page\": %d,\n"
+        "  \"total_pages\": %d\n"
         "}\n",
-        entity ? entity : "camera.chuangmi_ipc018_acd6_video_doorbell");
+        cfg->entity, cfg->width, cfg->height, cfg->fps,
+        cfg->camera_page, cfg->total_pages);
     fclose(f);
     return 0;
+}
+
+int s1e_camcfg_write_default(const char *path, const char *entity)
+{
+    s1e_cam_cfg cfg;
+
+    s1e_camcfg_load(&cfg, path);
+    snprintf(cfg.entity, sizeof(cfg.entity), "%s", entity);
+    return s1e_camcfg_write(&cfg, path);
 }
 
 int s1e_conf_load(s1e_ha_conf *out, const char *path)

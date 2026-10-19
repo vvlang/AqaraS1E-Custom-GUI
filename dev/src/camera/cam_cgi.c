@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -280,7 +281,6 @@ static int do_save(void)
     static char body[MAX_POST];
     s1e_cam_cfg cfg;
     char esc[960];
-    const char *entity;
 
     if (read_post(body, sizeof(body)) != 0) {
         json_err("未收到配置内容");
@@ -307,8 +307,12 @@ static int do_save(void)
     if (cfg.camera_page < 0) cfg.camera_page = 0;
     if (cfg.camera_page > cfg.total_pages - 1) cfg.camera_page = cfg.total_pages - 1;
 
-    entity = cfg.entity;
-    if (s1e_camcfg_write_default(NULL, entity) != 0) {
+    /*
+     * 必须按结构体整体写入。之前误用了 s1e_camcfg_write_default——
+     * 它只写 entity，其余字段全是硬编码，导致用户设置的屏号/分辨率
+     * 保存后被丢弃，刷新又变回默认值。
+     */
+    if (s1e_camcfg_write(&cfg, NULL) != 0) {
         json_err("写入配置文件失败");
         return 1;
     }
@@ -362,6 +366,67 @@ static int do_snapshot(void)
 
     fprintf(stderr, "[cgi] 输出快照 %zu 字节 (%s)\n", r.len, cfg.entity);
     s1e_http_free(&r);
+    return 0;
+}
+
+/*
+ * 重启 cam_view，让刚保存的配置生效。
+ *
+ * cam_view 启动时读一次配置就再也不读了，所以保存配置后必须重启它。
+ * 这里只操作我们自己的进程，不碰作者的任何一个守护进程。
+ *
+ * 实现要点：CGI 是被 httpd 以子进程方式调用的，直接在 CGI 里
+ * killall+拉起会让 httpd 一直等待这个进程结束。所以双 fork 脱离，
+ * 让真正的重启在后台独立进行。
+ */
+static int do_restart(void)
+{
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        json_err("无法创建进程");
+        return 1;
+    }
+
+    if (pid == 0) {
+        /* 第一次 fork 的子进程：再 fork 一次就退出，
+         * 让孙进程彻底脱离 httpd 的进程组。 */
+        setsid();
+        if (fork() > 0)
+            _exit(0);
+
+        /* 孙进程：切断与 CGI 的标准流关联，否则 httpd 会一直等 */
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            if (devnull > STDERR_FILENO)
+                close(devnull);
+        }
+
+        execl("/bin/sh", "sh", "-c",
+              "killall cam_view 2>/dev/null; sleep 1; "
+              "nohup /data/scripts/dev/cam_view >/tmp/cam_view.log 2>&1 &",
+              (char *)NULL);
+        _exit(1);
+    }
+
+    /* 父进程：只等第一个子进程 fork 完就返回，不等真正的重启 */
+    waitpid(pid, NULL, 0);
+    usleep(2500000);   /* 给 cam_view 一点启动时间 */
+
+    char esc[960];
+    s1e_cam_cfg cfg;
+    s1e_camcfg_load(&cfg, NULL);
+    s1e_json_escape(cfg.entity, esc, sizeof(esc));
+
+    http_out("application/json; charset=utf-8");
+    printf("{\"status\":\"ok\",\"restarted\":true,\"entity\":\"%s\","
+           "\"width\":%d,\"height\":%d,\"fps\":%d,"
+           "\"camera_page\":%d,\"total_pages\":%d}\n",
+           esc, cfg.width, cfg.height, cfg.fps,
+           cfg.camera_page, cfg.total_pages);
     return 0;
 }
 
@@ -424,6 +489,7 @@ int main(void)
     if (!strcmp(action, "list"))     return do_list();
     if (!strcmp(action, "get"))      return do_get();
     if (!strcmp(action, "save"))     return do_save();
+    if (!strcmp(action, "restart"))  return do_restart();
     if (!strcmp(action, "snapshot")) return do_snapshot();
 
     json_err("未知动作");

@@ -39,7 +39,14 @@ typedef struct {
  */
 int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path);
 
-/* 把默认配置写盘，供用户在设备上直接编辑 */
+/* 把 cfg 里的全部字段写盘。设置页保存走这里。 */
+int s1e_camcfg_write(const s1e_cam_cfg *cfg, const char *path);
+
+/*
+ * 写入一份默认配置，只指定摄像头实体。
+ * 仅供 cam_view --write-config 使用——它只用来「选定摄像头」，
+ * 其余字段保持默认值。设置页保存请用 s1e_camcfg_write。
+ */
 int s1e_camcfg_write_default(const char *path, const char *entity);
 
 /*
