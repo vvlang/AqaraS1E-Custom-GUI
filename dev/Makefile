@@ -55,7 +55,11 @@ BUILDDIR := build/$(LINK_MODE)
 
 PROGS := hello_fb snap_fast http_body_strip safe_png_recv
 
-.PHONY: all clean check-toolchain inspect static dynamic
+# 摄像头程序由多个编译单元组成，需要单独规则
+CAM_DIR   := $(SRCDIR)/camera
+CAM_PROGS := cam_view touch_probe cam_probe
+
+.PHONY: all clean check-toolchain inspect static dynamic test
 
 all: check-toolchain dynamic
 
@@ -66,7 +70,7 @@ dynamic:
 	@$(MAKE) --no-print-directory LINK_MODE=dynamic all-progs
 
 .PHONY: all-progs
-all-progs: $(addprefix $(BUILDDIR)/,$(PROGS))
+all-progs: $(addprefix $(BUILDDIR)/,$(PROGS)) $(addprefix $(BUILDDIR)/,$(CAM_PROGS))
 
 check-toolchain:
 	@if [ -z "$(CROSS_CC)" ]; then \
@@ -83,6 +87,43 @@ $(BUILDDIR)/%: $(SRCDIR)/%.c
 	@echo "==> $@"
 	@file $@ | sed 's/^/    /'
 	@ls -l $@ | awk '{print "    大小: " $$5 " 字节"}'
+
+# cam_view = 主程序 + HTTP + 配置解析 + framebuffer + 触摸翻页 + stb JPEG 解码
+$(BUILDDIR)/cam_view: $(CAM_DIR)/cam_view.c $(CAM_DIR)/s1e_http.c \
+                      $(CAM_DIR)/s1e_conf.c $(CAM_DIR)/s1e_fb.c \
+                      $(CAM_DIR)/s1e_touch.c $(CAM_DIR)/stb_jpeg_impl.c
+	@mkdir -p $(BUILDDIR)
+	$(CROSS_CC) $(CFLAGS) -I$(CAM_DIR) \
+	    $(CAM_DIR)/cam_view.c $(CAM_DIR)/s1e_http.c $(CAM_DIR)/s1e_conf.c \
+	    $(CAM_DIR)/s1e_fb.c $(CAM_DIR)/s1e_touch.c $(CAM_DIR)/stb_jpeg_impl.c \
+	    -o $@ $(LDFLAGS)
+	@$(CROSS_STRIP) $@ 2>/dev/null || true
+	@echo "==> $@"
+	@file $@ | sed 's/^/    /'
+	@ls -l $@ | awk '{print "    大小: " $$5 " 字节"}'
+
+# 触摸探针 / 摄像头探针：不涉及 stb，单独规则
+$(BUILDDIR)/touch_probe: $(CAM_DIR)/touch_probe.c
+	@mkdir -p $(BUILDDIR)
+	$(CROSS_CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+	@$(CROSS_STRIP) $@ 2>/dev/null || true
+	@echo "==> $@"
+	@ls -l $@ | awk '{print "    大小: " $$5 " 字节"}'
+
+$(BUILDDIR)/cam_probe: $(CAM_DIR)/cam_probe.c $(CAM_DIR)/s1e_http.c $(CAM_DIR)/s1e_conf.c
+	@mkdir -p $(BUILDDIR)
+	$(CROSS_CC) $(CFLAGS) -I$(CAM_DIR) \
+	    $(CAM_DIR)/cam_probe.c $(CAM_DIR)/s1e_http.c $(CAM_DIR)/s1e_conf.c \
+	    -o $@ $(LDFLAGS)
+	@$(CROSS_STRIP) $@ 2>/dev/null || true
+	@echo "==> $@"
+	@ls -l $@ | awk '{print "    大小: " $$5 " 字节"}'
+
+# 本机测试（不需要设备）
+test:
+	@sh scripts/run_tests.sh
+	@python3 scripts/test_png_recv.py
+	@python3 scripts/test_http.py
 
 # 打印产物的架构与链接信息，用于确认能跑在设备上
 # 用 readelf（交叉工具链自带，Linux/CI 上可用），不依赖 macOS 的 otool

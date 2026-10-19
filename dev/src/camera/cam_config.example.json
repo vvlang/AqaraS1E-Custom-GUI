@@ -1,0 +1,21 @@
+{
+  "_说明": [
+    "cam_view 的常驻配置。复制到设备的 /data/scripts/dev/cam_config.json 后生效。",
+    "改完重启 cam_view 即可，不需要重新编译。",
+    "命令行参数可以临时覆盖这里的任意一项。"
+  ],
+
+  "_entity": "要显示的 HA 摄像头实体 ID。在 HA 里查：设置 > 开发者工具 > 状态，找 domain 为 camera 的实体",
+  "entity": "camera.chuangmi_ipc018_acd6_video_doorbell",
+
+  "_分辨率": "向摄像头请求的尺寸。实测该摄像头支持到 1280x720，但设备只剩约 17MB 内存，640x480 是画质与内存的平衡点",
+  "width": 640,
+  "height": 480,
+
+  "_帧率": "每秒取几帧。设备算力有限，建议 3；调试时可临时用 --fps 5",
+  "fps": 3,
+
+  "_屏序": "camera_page 从 0 起算。必须与 layout_p0.json 里 screens 的数量和顺序一致，否则翻页判定会错位",
+  "camera_page": 2,
+  "total_pages": 3
+}
