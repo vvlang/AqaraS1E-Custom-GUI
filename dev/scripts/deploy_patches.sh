@@ -161,6 +161,21 @@ if [ "$DO_OTA" -eq 1 ]; then
             else
                 echo "[!] 替换失败"; rm -rf "$d"; exit 1
             fi
+
+            # api.cgi 有两份：httpd 实际执行的是 /tmp/www/cgi-bin/ 那份，
+            # /data/scripts/ 那份是持久化副本、开机时由 post_init.sh 复制过去。
+            # 只改持久化副本的话，本次运行仍然用的是旧文件，要等下次重启才生效。
+            if [ "$f" = "api.cgi" ]; then
+                printf "    %-16s " "  └ 运行副本"
+                if dexec "cp -f /data/scripts/api.cgi /tmp/www/cgi-bin/api.cgi.new && \
+                           chmod +x /tmp/www/cgi-bin/api.cgi.new && \
+                           mv -f /tmp/www/cgi-bin/api.cgi.new /tmp/www/cgi-bin/api.cgi && \
+                           echo __OK__" | grep -q "__OK__"; then
+                    echo "已同步 (/tmp/www/cgi-bin/api.cgi)"
+                else
+                    echo "[!] 同步失败（重启后 post_init.sh 会自行复制）"
+                fi
+            fi
         done
         rm -rf "$d"
         echo "    [+] 完成。改动是 3 处 URL 的等长替换，文件大小不变。"
