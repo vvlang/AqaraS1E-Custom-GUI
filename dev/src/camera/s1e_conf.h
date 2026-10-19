@@ -11,6 +11,8 @@
 #ifndef S1E_CONF_H
 #define S1E_CONF_H
 
+#include <stddef.h>
+
 #define S1E_CONF_PATH  "/data/scripts/ha_config.json"
 #define S1E_CAMCFG_PATH "/data/scripts/dev/cam_config.json"
 #define S1E_HAURL_MAX 128
@@ -39,6 +41,17 @@ int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path);
 
 /* 把默认配置写盘，供用户在设备上直接编辑 */
 int s1e_camcfg_write_default(const char *path, const char *entity);
+
+/*
+ * 极简 JSON 取值。刻意不做完整 JSON 解析——配置文件结构固定且扁平，
+ * 字符串扫描足够，少一个依赖就少一分在设备上出问题的可能。
+ */
+int s1e_json_get_string(const char *json, const char *key,
+                        char *out, size_t out_len);
+int s1e_json_get_int(const char *json, const char *key, int def);
+
+/* 把字符串转义成合法 JSON 字符串内容（不含外层引号），out 需留足 6 倍空间 */
+void s1e_json_escape(const char *in, char *out, size_t out_len);
 
 /*
  * 读取配置。成功返回 0；文件不存在或字段缺失返回 -1。

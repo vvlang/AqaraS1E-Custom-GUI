@@ -7,8 +7,8 @@
 
 /* 从 JSON 文本里取 "key": "value" 的 value（不含引号，不做转义还原）。
  * 这是有意为之的简化：HA 令牌是 base64 风格，不含 \" 和 \\。 */
-static int json_get_string(const char *json, const char *key,
-                           char *out, size_t out_len)
+int s1e_json_get_string(const char *json, const char *key,
+                        char *out, size_t out_len)
 {
     char pat[64];
     const char *p, *v, *end;
@@ -38,7 +38,7 @@ static int json_get_string(const char *json, const char *key,
 }
 
 /* 从 JSON 文本里取 "key": <数字> 的值。找不到返回 def。 */
-static int json_get_int(const char *json, const char *key, int def)
+int s1e_json_get_int(const char *json, const char *key, int def)
 {
     char pat[64];
     const char *p;
@@ -57,6 +57,31 @@ static int json_get_int(const char *json, const char *key, int def)
     long v = strtol(p, &end, 10);
     if (end == p) return def;
     return (int)v;
+}
+
+/* JSON 字符串转义：引号、反斜杠、控制字符必须转义，否则中文名会破坏 JSON */
+void s1e_json_escape(const char *in, char *out, size_t out_len)
+{
+    size_t o = 0;
+    if (!out_len) return;
+
+    for (; *in && o + 7 < out_len; in++) {
+        unsigned char c = (unsigned char)*in;
+        switch (c) {
+        case '"':  out[o++] = '\\'; out[o++] = '"';  break;
+        case '\\': out[o++] = '\\'; out[o++] = '\\'; break;
+        case '\n': out[o++] = '\\'; out[o++] = 'n';  break;
+        case '\r': out[o++] = '\\'; out[o++] = 'r';  break;
+        case '\t': out[o++] = '\\'; out[o++] = 't';  break;
+        default:
+            if (c < 0x20) {
+                o += (size_t)snprintf(out + o, out_len - o, "\\u%04x", c);
+            } else {
+                out[o++] = (char)c;   /* UTF-8 多字节原样保留 */
+            }
+        }
+    }
+    out[o] = '\0';
 }
 
 int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path)
@@ -85,12 +110,12 @@ int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path)
     fclose(f);
     buf[n] = '\0';
 
-    json_get_string(buf, "entity", cfg->entity, sizeof(cfg->entity));
-    cfg->fps         = json_get_int(buf, "fps", cfg->fps);
-    cfg->width       = json_get_int(buf, "width", cfg->width);
-    cfg->height      = json_get_int(buf, "height", cfg->height);
-    cfg->camera_page = json_get_int(buf, "camera_page", cfg->camera_page);
-    cfg->total_pages = json_get_int(buf, "total_pages", cfg->total_pages);
+    s1e_json_get_string(buf, "entity", cfg->entity, sizeof(cfg->entity));
+    cfg->fps         = s1e_json_get_int(buf, "fps", cfg->fps);
+    cfg->width       = s1e_json_get_int(buf, "width", cfg->width);
+    cfg->height      = s1e_json_get_int(buf, "height", cfg->height);
+    cfg->camera_page = s1e_json_get_int(buf, "camera_page", cfg->camera_page);
+    cfg->total_pages = s1e_json_get_int(buf, "total_pages", cfg->total_pages);
 
     if (cfg->fps < 1)  cfg->fps = 1;
     if (cfg->fps > 15) cfg->fps = 15;
@@ -140,13 +165,13 @@ int s1e_conf_load(s1e_ha_conf *out, const char *path)
     fclose(f);
     buf[n] = '\0';
 
-    if (json_get_string(buf, "ha_url", out->url, sizeof(out->url)) != 0 ||
+    if (s1e_json_get_string(buf, "ha_url", out->url, sizeof(out->url)) != 0 ||
         out->url[0] == '\0') {
         fprintf(stderr, "[conf] 未找到 ha_url，请在 Web 控制台配置 Home Assistant\n");
         return -1;
     }
 
-    if (json_get_string(buf, "ha_token", out->token, sizeof(out->token)) != 0 ||
+    if (s1e_json_get_string(buf, "ha_token", out->token, sizeof(out->token)) != 0 ||
         out->token[0] == '\0') {
         fprintf(stderr, "[conf] 未找到 ha_token\n");
         return -1;
