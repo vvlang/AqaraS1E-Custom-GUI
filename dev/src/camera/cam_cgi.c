@@ -53,10 +53,27 @@ static void http_out(const char *ctype)
     printf("\r\n");
 }
 
+/* 带状态码的响应。CGI 下要显式输出 Status 头。 */
+static void http_out_status(int code, const char *reason, const char *ctype)
+{
+    printf("Status: %d %s\r\n", code, reason);
+    printf("Content-Type: %s\r\n", ctype);
+    printf("Cache-Control: no-store\r\n");
+    printf("\r\n");
+}
+
 static void json_err(const char *msg)
 {
     http_out("application/json; charset=utf-8");
     printf("{\"status\":\"error\",\"message\":\"%s\"}\n", msg);
+}
+
+/* 鉴权失败：401。调用方不该把它当成功处理。 */
+static void json_unauthorized(void)
+{
+    http_out_status(401, "Unauthorized",
+                    "application/json; charset=utf-8");
+    printf("{\"status\":\"error\",\"message\":\"访问密钥缺失或错误，请从设置页进入\"}\n");
 }
 
 /* ---------------- 访问密钥 ---------------- */
@@ -392,8 +409,7 @@ int main(void)
 
     /* 其余动作一律要求密钥 */
     if (check_secret() != 0) {
-        http_out("application/json; charset=utf-8");
-        printf("{\"status\":\"error\",\"message\":\"访问密钥缺失或错误，请从设置页进入\"}\n");
+        json_unauthorized();
         return 1;
     }
 
