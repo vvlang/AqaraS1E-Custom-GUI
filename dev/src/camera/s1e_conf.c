@@ -129,6 +129,37 @@ int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path)
     return 0;
 }
 
+int s1e_count_screens(const char *layout_path)
+{
+    static char buf[64 * 1024];
+    const char *p = buf;
+    FILE *f;
+    size_t n;
+    int count = 0;
+
+    f = fopen(layout_path ? layout_path : "/data/scripts/layout_p0.json", "r");
+    if (!f)
+        return -1;
+    n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+
+    /* 每块屏恰好一个 "components": 键 */
+    while ((p = strstr(p, "\"components\":")) != NULL) {
+        count++;
+        p += 13;
+    }
+    return count;
+}
+
+int s1e_engine_pages(const char *layout_path)
+{
+    int screens = s1e_count_screens(layout_path);
+    if (screens <= 0)
+        return -1;
+    return screens + 1;    /* 引擎比 screens 多一页 */
+}
+
 int s1e_camcfg_write(const s1e_cam_cfg *cfg, const char *path)
 {
     FILE *f = fopen(path ? path : S1E_CAMCFG_PATH, "w");

@@ -200,8 +200,30 @@ int main(int argc, char **argv)
 
     if (cfg.fps < 1)  cfg.fps = 1;
     if (cfg.fps > 15) cfg.fps = 15;      /* 设备算力有限，别把 CPU 吃满 */
-    if (cfg.total_pages < 1) cfg.total_pages = 1;
     if (cfg.camera_page < 0) cfg.camera_page = 0;
+
+    /*
+     * 总页数从布局自动推导，不信任配置里的值。
+     *
+     * 实测引擎页数 = screens + 1（多出的是最后一屏「全量设备库」，
+     * 它不在 layout 的 screens 数组里）。以前让用户自己填 total_pages，
+     * 填小了会导致：本程序在摄像头页被钳位住不再退出，而引擎继续翻页，
+     * 两个进程同时写 framebuffer，表现为画面花屏。
+     * 自动推导后这个错不可能再发生。
+     */
+    {
+        int pages = s1e_engine_pages(NULL);
+        if (pages > 0) {
+            if (pages != cfg.total_pages)
+                fprintf(stderr, "[cam] 总页数按布局推导为 %d（配置里写的是 %d）\n",
+                        pages, cfg.total_pages);
+            cfg.total_pages = pages;
+        } else {
+            fprintf(stderr, "[cam] 读不到布局，沿用配置里的总页数 %d\n",
+                    cfg.total_pages);
+            if (cfg.total_pages < 1) cfg.total_pages = 1;
+        }
+    }
     if (cfg.camera_page > cfg.total_pages - 1)
         cfg.camera_page = cfg.total_pages - 1;
 
@@ -275,6 +297,8 @@ int main(int argc, char **argv)
      * 我们抢先铺一层深色会造成开机闪屏。只在真正切进摄像头屏时才动像素。
      */
 
+    long last_log_ms = 0;
+
     while (!g_stop) {
         uint8_t *rgb = NULL;
         int w = 0, h = 0, st = 0;
@@ -310,8 +334,13 @@ int main(int argc, char **argv)
             free(rgb);
             frames++;
             backoff = 1;
-            fprintf(stderr, "[cam] 第 %d 帧 %dx%d (HTTP %d, %ld ms)\n",
-                    frames, w, h, st, now_ms() - t0);
+            /* 每秒最多打一行。逐帧打日志在设备上会刷出几 MB，
+               /tmp 是 tmpfs，post_init.sh 还要花时间截断它。 */
+            if (now_ms() - last_log_ms >= 1000) {
+                last_log_ms = now_ms();
+                fprintf(stderr, "[cam] 第 %d 帧 %dx%d (HTTP %d, %ld ms)\n",
+                        frames, w, h, st, now_ms() - t0);
+            }
         } else {
             fprintf(stderr, "[cam] 取帧失败，%d 秒后重试\n", backoff);
             sleep((unsigned)backoff);

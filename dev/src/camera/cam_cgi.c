@@ -264,15 +264,24 @@ static int do_get(void)
 {
     s1e_cam_cfg cfg;
     char esc[960];
+    int pages = s1e_engine_pages(NULL);
 
     s1e_camcfg_load(&cfg, NULL);
+    /* 页数由布局推导，不让用户填——填错会导致翻页追踪错位并花屏 */
+    if (pages > 0)
+        cfg.total_pages = pages;
+    if (cfg.camera_page > cfg.total_pages - 1)
+        cfg.camera_page = cfg.total_pages - 1;
+
     s1e_json_escape(cfg.entity, esc, sizeof(esc));
 
     http_out("application/json; charset=utf-8");
     printf("{\"entity\":\"%s\",\"width\":%d,\"height\":%d,\"fps\":%d,"
-           "\"camera_page\":%d,\"total_pages\":%d}\n",
+           "\"camera_page\":%d,\"total_pages\":%d,"
+           "\"screens\":%d,\"auto_pages\":%s}\n",
            esc, cfg.width, cfg.height, cfg.fps,
-           cfg.camera_page, cfg.total_pages);
+           cfg.camera_page, cfg.total_pages,
+           s1e_count_screens(NULL), pages > 0 ? "true" : "false");
     return 0;
 }
 
@@ -297,13 +306,24 @@ static int do_save(void)
     cfg.height      = s1e_json_get_int(body, "height", 480);
     cfg.fps         = s1e_json_get_int(body, "fps", 3);
     cfg.camera_page = s1e_json_get_int(body, "camera_page", 2);
-    cfg.total_pages = s1e_json_get_int(body, "total_pages", 3);
 
     /* 范围钳位，避免手滑填出荒谬值 */
     if (cfg.width  < 160 || cfg.width  > 1920) cfg.width = 640;
     if (cfg.height < 120 || cfg.height > 1080) cfg.height = 480;
     if (cfg.fps < 1 || cfg.fps > 15)           cfg.fps = 3;
-    if (cfg.total_pages < 1 || cfg.total_pages > 16) cfg.total_pages = 3;
+
+    /*
+     * 总页数一律按布局推导，忽略提交上来的值。
+     * 引擎页数 = 屏数 + 1（多出的是最后一屏全量设备库）。
+     * 让用户手填曾经导致本程序页码被钳位住不退出、而引擎继续翻页，
+     * 两个进程抢同一块显存表现为花屏。
+     */
+    {
+        int pages = s1e_engine_pages(NULL);
+        if (pages > 0)
+            cfg.total_pages = pages;
+    }
+    if (cfg.total_pages < 1) cfg.total_pages = 1;
     if (cfg.camera_page < 0) cfg.camera_page = 0;
     if (cfg.camera_page > cfg.total_pages - 1) cfg.camera_page = cfg.total_pages - 1;
 

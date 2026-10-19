@@ -39,6 +39,26 @@ typedef struct {
  */
 int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path);
 
+/*
+ * 从 layout_p0.json 数出屏幕数量。
+ * 用 "components": 计数——每块屏恰好有一个该键，比匹配屏 id 稳妥。
+ * 找不到文件时返回 -1。
+ */
+int s1e_count_screens(const char *layout_path);
+
+/*
+ * 算出引擎实际的总页数：屏数 + 1。
+ *
+ * 实测引擎在 3 屏时报告 pages=4，4 屏时可翻到 page 4。
+ * 多出来的那一页是最后一屏「自动对接全量 HA 设备库与系统控制」，
+ * 不在 layout 的 screens 数组里。
+ *
+ * 这个换算以前要用户自己填 total_pages，填错就会导致 cam_view
+ * 的翻页追踪与引擎错位（一个卡在摄像头页不退出，另一个继续画自己的页，
+ * 两个进程抢同一块显存表现为花屏）。所以改为从布局自动推导。
+ */
+int s1e_engine_pages(const char *layout_path);
+
 /* 把 cfg 里的全部字段写盘。设置页保存走这里。 */
 int s1e_camcfg_write(const s1e_cam_cfg *cfg, const char *path);
 
