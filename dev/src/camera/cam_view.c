@@ -270,12 +270,16 @@ int main(int argc, char **argv)
         s1e_fb_close(&fb);
         return 5;
     }
-    s1e_fb_fill_rgb(&fb, 16, 20, 28);   /* 底色，避免显示未初始化的内容 */
+    /*
+     * 这里刻意不刷底色。开机自启时引擎可能还没画完，
+     * 我们抢先铺一层深色会造成开机闪屏。只在真正切进摄像头屏时才动像素。
+     */
 
     while (!g_stop) {
         uint8_t *rgb = NULL;
         int w = 0, h = 0, st = 0;
         long t0, spent, wait;
+        int was_on_camera_page = 0;
 
         s1e_touch_poll(&touch);
 
@@ -285,8 +289,16 @@ int main(int argc, char **argv)
          * 所以我们不画的时候它画的内容会一直保持。
          */
         if (touch.page != cfg.camera_page) {
+            was_on_camera_page = 0;
             usleep(60000);
             continue;
+        }
+
+        /* 刚切进摄像头屏：先铺底色，避免残留上一屏的内容 */
+        if (!was_on_camera_page) {
+            s1e_fb_fill_rgb(&fb, 16, 20, 28);
+            was_on_camera_page = 1;
+            fprintf(stderr, "[cam] 进入第 %d 屏，开始绘制\n", cfg.camera_page);
         }
 
         t0 = now_ms();
