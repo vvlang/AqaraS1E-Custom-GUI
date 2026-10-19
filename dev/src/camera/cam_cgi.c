@@ -170,10 +170,16 @@ static void emit_entities(const char *states, const char *domain)
     const char *p = states;
     int first = 1;
     int found = 0;
+    size_t dl = strlen(domain);
 
     http_out("application/json; charset=utf-8");
     printf("[");
 
+    /*
+     * 锚点含 "camera." 前缀，命中后 p 跳到前缀之后。
+     * 拼回 id 时必须把前缀加回去——否则下拉框里选出来的实体缺域前缀，
+     * 保存后 cam_view 拿到的就是无效实体，表现为预览抓帧失败。
+     */
     snprintf(needle, sizeof(needle), "\"entity_id\":\"%s.", domain);
 
     while ((p = strstr(p, needle)) != NULL) {
@@ -185,9 +191,11 @@ static void emit_entities(const char *states, const char *domain)
         q = strchr(p, '"');
         if (!q) break;
         n = (size_t)(q - p);
-        if (n >= sizeof(id)) n = sizeof(id) - 1;
-        memcpy(id, p, n);
-        id[n] = '\0';
+        if (dl + 1 + n >= sizeof(id)) n = sizeof(id) - dl - 2;
+        memcpy(id, domain, dl);
+        id[dl] = '.';
+        memcpy(id + dl + 1, p, n);
+        id[dl + 1 + n] = '\0';
 
         /* 从这里往后找 friendly_name，限制在 1KB 内避免串到下一个实体 */
         {
