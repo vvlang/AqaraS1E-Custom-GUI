@@ -124,6 +124,7 @@ test:
 	@sh scripts/run_tests.sh
 	@python3 scripts/test_png_recv.py
 	@python3 scripts/test_http.py
+	@python3 scripts/test_cgi.py
 
 # 打印产物的架构与链接信息，用于确认能跑在设备上
 # 用 readelf（交叉工具链自带，Linux/CI 上可用），不依赖 macOS 的 otool

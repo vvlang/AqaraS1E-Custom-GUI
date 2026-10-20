@@ -42,7 +42,12 @@
 #include <unistd.h>
 
 #define MAX_POST 4096
-#define SECRET_PATH "/data/scripts/dev/cam_secret"
+/* 密钥文件路径同样可被环境变量覆盖，方便测试（见 s1e_conf.c 顶部说明） */
+static const char *secret_path(void)
+{
+    const char *e = getenv("S1E_T_SECRET");
+    return (e && *e) ? e : "/data/scripts/dev/cam_secret";
+}
 
 static void http_out(const char *ctype)
 {
@@ -88,7 +93,7 @@ static const char *get_secret(void)
     size_t n;
     unsigned seed;
 
-    f = fopen(SECRET_PATH, "r");
+    f = fopen(secret_path(), "r");
     if (f) {
         n = fread(sec, 1, sizeof(sec) - 1, f);
         fclose(f);
@@ -110,7 +115,7 @@ static const char *get_secret(void)
     }
     snprintf(sec, sizeof(sec), "%08x%08x", seed, (unsigned)getpid() * 2654435761u);
 
-    fd = open(SECRET_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    fd = open(secret_path(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) {
         ssize_t w = write(fd, sec, strlen(sec));
         (void)w;
@@ -164,57 +169,114 @@ static int read_post(char *buf, size_t cap)
     return (got > 0) ? 0 : -1;
 }
 
-/* 从 /api/states 的 JSON 里挑出指定域的实体，输出 JSON 数组 */
+/* 跳过 JSON 里的空白字符 */
+static const char *skip_ws(const char *p)
+{
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+        p++;
+    return p;
+}
+
+/*
+ * 从 p 开始找形如 "key" : "value" 的字段，把 value 取出来。
+ * 对键值之间的空白不敏感——不同 JSON 序列化库的冒号后空格不一样，
+ * 按固定字面量匹配会在 HA 换库后静默失配。
+ * 成功返回 1，失败返回 0。
+ */
+static int find_str_field(const char *p, const char *key,
+                          char *out, size_t out_len)
+{
+    char pat[64];
+    const char *q, *v;
+
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
+    p = strstr(p, pat);
+    if (!p) return 0;
+
+    p = skip_ws(p + strlen(pat));
+    if (*p != ':') return 0;
+    p = skip_ws(p + 1);
+    if (*p != '"') return 0;
+    p++;
+
+    /*
+     * 找结尾的引号，但要跳过转义序列 \"。友好名是用户可改的，
+     * 含引号是合法的（JSON 里写作 \"）。
+     */
+    v = p;
+    for (q = p; *q; q++) {
+        if (*q == '\\' && q[1]) { q++; continue; }   /* 跳过被转义的字符 */
+        if (*q == '"') break;
+    }
+    if (*q != '"') return 0;
+
+    /* 就地反转义：\" -> " 、\\ -> \ ，其余原样（UTF-8 多字节不动） */
+    {
+        const char *r = v;
+        size_t o = 0;
+        while (r < q && o + 1 < out_len) {
+            if (*r == '\\' && r + 1 < q) {
+                out[o++] = r[1];
+                r += 2;
+            } else {
+                out[o++] = *r++;
+            }
+        }
+        out[o] = '\0';
+    }
+    return 1;
+}
+
 static void emit_entities(const char *states, const char *domain)
 {
-    char needle[64];
     const char *p = states;
     int first = 1;
     int found = 0;
     size_t dl = strlen(domain);
+    char key[32];
 
     http_out("application/json; charset=utf-8");
     printf("[");
 
-    /*
-     * 锚点含 "camera." 前缀，命中后 p 跳到前缀之后。
-     * 拼回 id 时必须把前缀加回去——否则下拉框里选出来的实体缺域前缀，
-     * 保存后 cam_view 拿到的就是无效实体，表现为预览抓帧失败。
-     */
-    snprintf(needle, sizeof(needle), "\"entity_id\":\"%s.", domain);
+    snprintf(key, sizeof(key), "\"entity_id\"");
 
-    while ((p = strstr(p, needle)) != NULL) {
+    while ((p = strstr(p, key)) != NULL) {
         char id[160], name[160];
         const char *q;
         size_t n;
 
-        p += strlen(needle);
-        q = strchr(p, '"');
-        if (!q) break;
-        n = (size_t)(q - p);
-        if (dl + 1 + n >= sizeof(id)) n = sizeof(id) - dl - 2;
-        memcpy(id, domain, dl);
-        id[dl] = '.';
-        memcpy(id + dl + 1, p, n);
-        id[dl + 1 + n] = '\0';
+        p += strlen(key);
+        p = skip_ws(p);
+        if (*p != ':') continue;
+        p = skip_ws(p + 1);
+        if (*p != '"') continue;
+        p++;
 
-        /* 从这里往后找 friendly_name，限制在 1KB 内避免串到下一个实体 */
+        /* 先看值是不是目标域的，不是就跳过（不动 p，交给 strstr 继续找） */
+        if (strncmp(p, domain, dl) != 0 || p[dl] != '.')
+            continue;
+
+        q = strchr(p + dl + 1, '"');
+        if (!q) break;
+
+        n = (size_t)(q - p);
+        if (n >= sizeof(id)) n = sizeof(id) - 1;
+        memcpy(id, p, n);
+        id[n] = '\0';
+
+        p = q + 1;    /* 越过这个实体的 id，继续扫后面的键 */
+
+        /*
+         * 找 friendly_name，限制在本实体附近（1KB 内），避免串到下一个实体。
+         * 找不到就用 id 兜底——界面上一律有可读的名字。
+         */
         {
-            const char *w = strstr(p, "\"friendly_name\":\"");
-            if (w && w - p < 1024) {
-                w += strlen("\"friendly_name\":\"");
-                const char *e = strchr(w, '"');
-                if (e) {
-                    size_t m = (size_t)(e - w);
-                    if (m >= sizeof(name)) m = sizeof(name) - 1;
-                    memcpy(name, w, m);
-                    name[m] = '\0';
-                } else {
-                    snprintf(name, sizeof(name), "%s", id);
-                }
-            } else {
+            const char *probe = strstr(p, "\"friendly_name\"");
+            if (probe && probe - p < 1024 &&
+                find_str_field(p, "friendly_name", name, sizeof(name)))
+                ;                       /* 取到了就用它 */
+            else
                 snprintf(name, sizeof(name), "%s", id);
-            }
         }
 
         {
@@ -455,13 +517,19 @@ static int do_restart(void)
  * 页面与本接口同源，浏览器会自动带上这个 Cookie；
  * 跨源站点既拿不到 Cookie，也读不到响应（无 CORS 头）。
  */
+static const char *path_or_env_page(void)
+{
+    const char *e = getenv("S1E_T_PAGE");
+    return (e && *e) ? e : "/tmp/www/cam_settings.html";
+}
+
 static int do_page(void)
 {
     static char html[64 * 1024];
     FILE *f;
     size_t n;
 
-    f = fopen("/tmp/www/cam_settings.html", "r");
+    f = fopen(path_or_env_page(), "r");
     if (!f) {
         json_err("设置页文件不存在：/tmp/www/cam_settings.html");
         return 1;

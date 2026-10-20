@@ -5,6 +5,19 @@
 #include <string.h>
 #include <strings.h>
 
+/*
+ * 路径可被环境变量覆盖，只为方便在开发机上测试。
+ * 未设置时用设备上的真实路径，行为不变。
+ *   S1E_T_HA     覆盖 ha_config.json
+ *   S1E_T_CAMCFG 覆盖 cam_config.json
+ *   S1E_T_LAYOUT 覆盖 layout_p0.json
+ */
+static const char *path_or_env(const char *envname, const char *dflt)
+{
+    const char *e = getenv(envname);
+    return (e && *e) ? e : dflt;
+}
+
 /* 从 JSON 文本里取 "key": "value" 的 value（不含引号，不做转义还原）。
  * 这是有意为之的简化：HA 令牌是 base64 风格，不含 \" 和 \\。 */
 int s1e_json_get_string(const char *json, const char *key,
@@ -89,7 +102,7 @@ int s1e_camcfg_load(s1e_cam_cfg *cfg, const char *path)
     static char buf[1024];
     FILE *f;
     size_t n;
-    const char *p = path ? path : S1E_CAMCFG_PATH;
+    const char *p = path ? path : path_or_env("S1E_T_CAMCFG", S1E_CAMCFG_PATH);
 
     /* 先填默认值 */
     memset(cfg, 0, sizeof(*cfg));
@@ -137,7 +150,8 @@ int s1e_count_screens(const char *layout_path)
     size_t n;
     int count = 0;
 
-    f = fopen(layout_path ? layout_path : "/data/scripts/layout_p0.json", "r");
+    f = fopen(layout_path ? layout_path
+                : path_or_env("S1E_T_LAYOUT", "/data/scripts/layout_p0.json"), "r");
     if (!f)
         return -1;
     n = fread(buf, 1, sizeof(buf) - 1, f);
@@ -162,7 +176,7 @@ int s1e_engine_pages(const char *layout_path)
 
 int s1e_camcfg_write(const s1e_cam_cfg *cfg, const char *path)
 {
-    FILE *f = fopen(path ? path : S1E_CAMCFG_PATH, "w");
+    FILE *f = fopen(path ? path : path_or_env("S1E_T_CAMCFG", S1E_CAMCFG_PATH), "w");
     if (!f) return -1;
     fprintf(f,
         "{\n"
@@ -197,9 +211,9 @@ int s1e_conf_load(s1e_ha_conf *out, const char *path)
 
     memset(out, 0, sizeof(*out));
 
-    f = fopen(path ? path : S1E_CONF_PATH, "r");
+    f = fopen(path ? path : path_or_env("S1E_T_HA", S1E_CONF_PATH), "r");
     if (!f) {
-        fprintf(stderr, "[conf] 无法打开 %s\n", path ? path : S1E_CONF_PATH);
+        fprintf(stderr, "[conf] 无法打开 %s\n", path ? path : path_or_env("S1E_T_HA", S1E_CONF_PATH));
         return -1;
     }
     n = fread(buf, 1, sizeof(buf) - 1, f);
